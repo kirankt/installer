@@ -3,6 +3,7 @@ package rhcos
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/openshift/installer/pkg/asset"
@@ -38,6 +39,19 @@ func (i *BootstrapImage) Generate(p asset.Parents) error {
 	config := ic.Config
 
 	var osimage string
+	// Search ImageContentSources for mirrored Qemu image
+	// and use it if found from the first mirror
+	for _, imageContentSource := range config.ImageContentSources {
+		if strings.Contains(imageContentSource.Source, "qemu") {
+			// Choose the first mirror
+			osimage = imageContentSource.Mirrors[0]
+			if len(osimage) > 0 {
+				*i = BootstrapImage(osimage)
+				return nil
+			}
+		}
+	}
+
 	var err error
 	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
 	defer cancel()
