@@ -5,6 +5,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/openshift/installer/pkg/asset"
 	"github.com/openshift/installer/pkg/asset/installconfig"
 	"github.com/openshift/installer/pkg/rhcos"
@@ -43,6 +45,13 @@ func (i *BootstrapImage) Generate(p asset.Parents) error {
 	defer cancel()
 	switch config.Platform.Name() {
 	case baremetal.Name:
+		// Check for RHCOS image URL override
+		if osimage = config.Platform.BareMetal.BootstrapMachineOSImage; osimage != "" {
+			logrus.Infof("Found an URL override in Baremetal Platform for Bootstrap Machine OS Image: %s", osimage)
+			*i = BootstrapImage(osimage)
+			return nil
+		}
+
 		// Baremetal IPI launches a local VM for the bootstrap node
 		// Hence requires the QEMU image to use the libvirt backend
 		osimage, err = rhcos.QEMU(ctx)

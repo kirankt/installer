@@ -82,6 +82,12 @@ func osImage(config *types.InstallConfig) (string, error) {
 	case azure.Name:
 		osimage, err = rhcos.VHD(ctx)
 	case baremetal.Name:
+		// Check for RHCOS image URL override
+		if osimage = config.Platform.BareMetal.ClusterMachineOSImage; osimage != "" {
+			logrus.Infof("Found an URL override in Baremetal Platform for Cluster Machine OS Image: %s", osimage)
+			return osimage, nil
+		}
+
 		// Note that baremetal IPI currently uses the OpenStack image
 		// because this contains the necessary ironic config drive
 		// ignition support, which isn't enabled in the UPI BM images

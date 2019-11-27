@@ -18,6 +18,8 @@ const (
 	HardwareProfile         = "default"
 	APIVIP                  = ""
 	IngressVIP              = ""
+	BootstrapMachineOSImage = ""
+	ClusterMachineOSImage   = ""
 )
 
 // SetPlatformDefaults sets the defaults for the platform.

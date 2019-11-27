@@ -61,4 +61,14 @@ type Platform struct {
 
 	// DNSVIP is the VIP to use for internal DNS communication
 	DNSVIP string `json:"dnsVIP"`
+
+	// BootstrapMachineOSImage is a URL to override the default machine OS image
+	// for the bootstrap node.
+	// +optional
+	BootstrapMachineOSImage string `json:"bootstrapMachineOSImage,omitempty"`
+
+	// ClusterMachineOSImage is a URL to override the default machine OS image
+	// for cluster nodes.
+	// +optional
+	ClusterMachineOSImage string `json:"clusterMachineOSImage,omitempty"`
 }
