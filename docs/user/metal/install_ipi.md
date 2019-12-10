@@ -124,8 +124,6 @@ controlPlane:
     baremetal: {}
 platform:
   baremetal:
-    bootstrapMachineOSImage: https://mirror.example.com/path/to/rhcos-bootstrap-image.qcow.gz
-    clusterMachineOSImage: https://mirror.example.com/path/to/rhcos-baremetal-node-image.qcow.gz
     apiVIP: 192.168.111.5
     ingressVIP: 192.168.111.4
     dnsVIP: 192.168.111.3

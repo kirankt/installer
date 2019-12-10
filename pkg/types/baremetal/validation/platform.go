@@ -84,6 +84,16 @@ func ValidatePlatform(p *baremetal.Platform, n *types.Networking, fldPath *field
 	if err := validateIPNotinMachineCIDR(p.BootstrapProvisioningIP, n); err != nil {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("bootstrapHostIP"), p.BootstrapProvisioningIP, err.Error()))
 	}
+	if p.BootstrapOSImage != "" {
+		if err := validate.URI(p.BootstrapOSImage); err != nil {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("bootstrapOSImage"), p.BootstrapOSImage, err.Error()))
+		}
+	}
+	if p.ClusterOSImage != "" {
+		if err := validate.URI(p.ClusterOSImage); err != nil {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("clusterOSImage"), p.ClusterOSImage, err.Error()))
+		}
+	}
 
 	for _, validator := range dynamicValidators {
 		allErrs = append(allErrs, validator(p, fldPath)...)
