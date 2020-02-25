@@ -33,3 +33,13 @@ variable "instance_infos" {
   type        = list(map(string))
   description = "Instance information for hosts"
 }
+
+variable "ignition_url" {
+  type        = string
+  description = "The URL of the full master ignition"
+}
+
+variable "root_ca_cert" {
+  type        = string
+  description = "Root CA cert of full master ignition URL"
+}
