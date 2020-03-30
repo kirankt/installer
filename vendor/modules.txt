@@ -961,9 +961,6 @@ github.com/mattn/go-isatty
 github.com/metal3-io/baremetal-operator/pkg/apis/metal3/v1alpha1
 github.com/metal3-io/baremetal-operator/pkg/bmc
 github.com/metal3-io/baremetal-operator/pkg/hardware
-# github.com/metal3-io/cluster-api-provider-baremetal v0.0.0 => github.com/openshift/cluster-api-provider-baremetal v0.0.0-20190821174549-a2a477909c1d
-github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis
-github.com/metal3-io/cluster-api-provider-baremetal/pkg/apis/baremetal/v1alpha1
 # github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b
 github.com/mgutz/ansi
 # github.com/mitchellh/cli v1.0.0
@@ -1026,6 +1023,9 @@ github.com/openshift/cluster-api/pkg/apis/cluster/common
 github.com/openshift/cluster-api/pkg/apis/cluster/v1alpha1
 github.com/openshift/cluster-api/pkg/apis/machine/common
 github.com/openshift/cluster-api/pkg/apis/machine/v1beta1
+# github.com/openshift/cluster-api-provider-baremetal v0.0.0 => github.com/kirankt/cluster-api-provider-baremetal v0.0.1
+github.com/openshift/cluster-api-provider-baremetal/pkg/apis
+github.com/openshift/cluster-api-provider-baremetal/pkg/apis/baremetal/v1alpha1
 # github.com/openshift/cluster-api-provider-gcp v0.0.1-0.20200120152131-1b09fd9e7156
 github.com/openshift/cluster-api-provider-gcp/pkg/apis
 github.com/openshift/cluster-api-provider-gcp/pkg/apis/gcpprovider/v1beta1
