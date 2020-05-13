@@ -26,7 +26,11 @@ func pointerIgnitionConfig(installConfig *types.InstallConfig, rootCA []byte, ro
 	case baremetaltypes.Name:
 		// Baremetal needs to point directly at the VIP because we don't have a
 		// way to configure DNS before Ignition runs.
-		ignitionHost = net.JoinHostPort(installConfig.BareMetal.APIVIP, "22623")
+		if role == "master" {
+			ignitionHost = net.JoinHostPort(installConfig.BareMetal.BootstrapProvisioningIP, "22623")
+		} else if role == "worker" {
+			ignitionHost = net.JoinHostPort(installConfig.BareMetal.ClusterProvisioningIP, "22623")
+		}
 	case openstacktypes.Name:
 		ignitionHost = net.JoinHostPort(installConfig.OpenStack.APIVIP, "22623")
 	case ovirttypes.Name:

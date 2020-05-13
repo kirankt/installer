@@ -46,8 +46,14 @@ func (a *MCSCertKey) Generate(dependencies asset.Parents) error {
 
 	switch installConfig.Config.Platform.Name() {
 	case baremetaltypes.Name:
-		cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.BareMetal.APIVIP)}
-		cfg.DNSNames = []string{hostname, installConfig.Config.BareMetal.APIVIP}
+		cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.BareMetal.APIVIP),
+			net.ParseIP(installConfig.Config.BareMetal.BootstrapProvisioningIP),
+			net.ParseIP(installConfig.Config.BareMetal.ClusterProvisioningIP),
+		}
+		cfg.DNSNames = []string{hostname, installConfig.Config.BareMetal.APIVIP,
+			installConfig.Config.BareMetal.BootstrapProvisioningIP,
+			installConfig.Config.BareMetal.ClusterProvisioningIP,
+		}
 	case openstacktypes.Name:
 		cfg.IPAddresses = []net.IP{net.ParseIP(installConfig.Config.OpenStack.APIVIP)}
 		cfg.DNSNames = []string{hostname, installConfig.Config.OpenStack.APIVIP}
