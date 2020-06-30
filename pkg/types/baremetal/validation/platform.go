@@ -19,13 +19,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// dynamicValidator is a function that validates certain fields in the platform.
-type dynamicValidator func(*baremetal.Platform, *field.Path) field.ErrorList
+// dynamicProvisioningValidator is a function that validates certain fields in the platform.
+type dynamicProvisioningValidator func(*baremetal.Platform, *field.Path) field.ErrorList
 
-// dynamicValidators is an array of dynamicValidator functions. This array can be added to by an init function, and
+// dynamicProvisioningValidators is an array of dynamicProvisioningValidator functions. This array can be added to by an init function, and
 // is intended to be used for validations that require dependencies not built with the default tags, e.g. libvirt
 // libraries.
-var dynamicValidators []dynamicValidator
+var dynamicProvisioningValidators []dynamicProvisioningValidator
 
 func validateIPinMachineCIDR(vip string, n *types.Networking) error {
 	for _, network := range n.MachineNetwork {
@@ -106,7 +106,7 @@ func validateOSImageURI(uri string) error {
 	return nil
 }
 
-// validateHosts checks that hosts have all required fields set with appropriate values
+// validateHosts checks that hosts have all required fields, except BMC, set with appropriate values
 func validateHosts(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList {
 	hostErrs := field.ErrorList{}
 
@@ -139,7 +139,8 @@ func validateHosts(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList
 	fldPath = fldPath.Child("hosts")
 
 	for idx, host := range hosts {
-		err := validate.Struct(host)
+		// Defer BMC validation until provisioning
+		err := validate.StructExcept(host, "BMC")
 		if err != nil {
 			hostType := reflect.TypeOf(hosts).Elem().Elem().Name()
 			for _, err := range err.(validator.ValidationErrors) {
@@ -155,6 +156,57 @@ func validateHosts(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList
 	}
 
 	return hostErrs
+}
+
+// validateHostBMC checks that a host's BMC has all required fields set with appropriate values
+func validateHostBMC(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList {
+	bmcErrs := field.ErrorList{}
+
+	values := make(map[string]map[interface{}]struct{})
+
+	//Initialize a new validator and register a custom validation rule for the tag `uniqueField`
+	validate := validator.New()
+	validate.RegisterValidation("uniqueField", func(fl validator.FieldLevel) bool {
+		valueFound := false
+		fieldName := fl.Parent().Type().Name() + "." + fl.FieldName()
+		fieldValue := fl.Field().Interface()
+
+		if fl.Field().Type().Comparable() {
+			if _, present := values[fieldName]; !present {
+				values[fieldName] = make(map[interface{}]struct{})
+			}
+
+			fieldValues := values[fieldName]
+			if _, valueFound = fieldValues[fieldValue]; !valueFound {
+				fieldValues[fieldValue] = struct{}{}
+			}
+		} else {
+			panic(fmt.Sprintf("Cannot apply validation rule 'uniqueField' on field %s", fl.FieldName()))
+		}
+
+		return !valueFound
+	})
+
+	//Apply validations and translate errors
+	fldPath = fldPath.Child("hosts")
+
+	for idx, host := range hosts {
+		err := validate.Struct(host.BMC)
+
+		if err != nil {
+			for _, err := range err.(validator.ValidationErrors) {
+				childName := fldPath.Index(idx).Child(err.Namespace())
+				switch err.Tag() {
+				case "required":
+					bmcErrs = append(bmcErrs, field.Required(childName, "missing "+err.Field()))
+				case "uniqueField":
+					bmcErrs = append(bmcErrs, field.Duplicate(childName, err.Value()))
+				}
+			}
+		}
+	}
+
+	return bmcErrs
 }
 
 func validateOSImages(p *baremetal.Platform, fldPath *field.Path) field.ErrorList {
@@ -217,16 +269,52 @@ func validateHostsCount(hosts []*baremetal.Host, installConfig *types.InstallCon
 // ValidatePlatform checks that the specified platform is valid.
 func ValidatePlatform(p *baremetal.Platform, n *types.Networking, fldPath *field.Path, c *types.InstallConfig) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if err := validate.URI(p.LibvirtURI); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("libvirtURI"), p.LibvirtURI, err.Error()))
-	}
-
 	if err := validate.IP(p.ClusterProvisioningIP); err != nil {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningHostIP"), p.ClusterProvisioningIP, err.Error()))
 	}
 
+	if p.Hosts == nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("hosts"), p.Hosts, "bare metal hosts are missing"))
+	}
+
+	if p.DefaultMachinePlatform != nil {
+		allErrs = append(allErrs, ValidateMachinePool(p.DefaultMachinePlatform, fldPath.Child("defaultMachinePlatform"))...)
+	}
+
+	if err := validate.IP(p.APIVIP); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("apiVIP"), p.APIVIP, err.Error()))
+	}
+
+	if err := validateIPinMachineCIDR(p.APIVIP, n); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("apiVIP"), p.APIVIP, err.Error()))
+	}
+
+	if err := validate.IP(p.IngressVIP); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("ingressVIP"), p.IngressVIP, err.Error()))
+	}
+
+	if err := validateIPinMachineCIDR(p.IngressVIP, n); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("ingressVIP"), p.IngressVIP, err.Error()))
+	}
+
+	if err := validateHostsCount(p.Hosts, c); err != nil {
+		allErrs = append(allErrs, field.Required(fldPath.Child("Hosts"), err.Error()))
+	}
+
+	allErrs = append(allErrs, validateHosts(p.Hosts, fldPath)...)
+
+	return allErrs
+}
+
+// ValidateProvisioning checks that provisioning network requirements specified is valid.
+func ValidateProvisioning(p *baremetal.Platform, n *types.Networking, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
 	if err := validate.IP(p.BootstrapProvisioningIP); err != nil {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("bootstrapProvisioningIP"), p.BootstrapProvisioningIP, err.Error()))
+	}
+	if err := validateIPNotinMachineCIDR(p.ClusterProvisioningIP, n); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningHostIP"), p.ClusterProvisioningIP, err.Error()))
 	}
 
 	if p.ProvisioningNetworkCIDR != nil {
@@ -265,51 +353,24 @@ func ValidatePlatform(p *baremetal.Platform, n *types.Networking, fldPath *field
 		}
 	}
 
+	if err := validateIPNotinMachineCIDR(p.BootstrapProvisioningIP, n); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("bootstrapHostIP"), p.BootstrapProvisioningIP, err.Error()))
+	}
+
 	// Make sure the provisioning interface is set.  Very little we can do to validate this  as it's not on this machine.
 	if p.ProvisioningNetworkInterface == "" {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningNetworkInterface"), p.ProvisioningNetworkInterface, "no provisioning network interface is configured, please set this value to be the interface on the provisioning network on your cluster's baremetal hosts"))
 	}
 
-	if p.Hosts == nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("hosts"), p.Hosts, "bare metal hosts are missing"))
-	}
-
-	if p.DefaultMachinePlatform != nil {
-		allErrs = append(allErrs, ValidateMachinePool(p.DefaultMachinePlatform, fldPath.Child("defaultMachinePlatform"))...)
-	}
-
-	if err := validate.IP(p.APIVIP); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("apiVIP"), p.APIVIP, err.Error()))
-	}
-
-	if err := validateIPinMachineCIDR(p.APIVIP, n); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("apiVIP"), p.APIVIP, err.Error()))
-	}
-
-	if err := validate.IP(p.IngressVIP); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("ingressVIP"), p.IngressVIP, err.Error()))
-	}
-
-	if err := validateIPinMachineCIDR(p.IngressVIP, n); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("ingressVIP"), p.IngressVIP, err.Error()))
-	}
-
-	if err := validateIPNotinMachineCIDR(p.ClusterProvisioningIP, n); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("provisioningHostIP"), p.ClusterProvisioningIP, err.Error()))
-	}
-	if err := validateIPNotinMachineCIDR(p.BootstrapProvisioningIP, n); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("bootstrapHostIP"), p.BootstrapProvisioningIP, err.Error()))
-	}
-
-	if err := validateHostsCount(p.Hosts, c); err != nil {
-		allErrs = append(allErrs, field.Required(fldPath.Child("Hosts"), err.Error()))
+	if err := validate.URI(p.LibvirtURI); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("libvirtURI"), p.LibvirtURI, err.Error()))
 	}
 
 	allErrs = append(allErrs, validateOSImages(p, fldPath)...)
 
-	allErrs = append(allErrs, validateHosts(p.Hosts, fldPath)...)
+	allErrs = append(allErrs, validateHostBMC(p.Hosts, fldPath)...)
 
-	for _, validator := range dynamicValidators {
+	for _, validator := range dynamicProvisioningValidators {
 		allErrs = append(allErrs, validator(p, fldPath)...)
 	}
 
