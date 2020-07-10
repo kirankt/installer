@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
@@ -106,8 +107,8 @@ func validateOSImageURI(uri string) error {
 	return nil
 }
 
-// validateHosts checks that hosts have all required fields, except BMC, set with appropriate values
-func validateHosts(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList {
+// validateHostsBase validates the hosts based on a filtering function
+func validateHostsBase(hosts []*baremetal.Host, fldPath *field.Path, filter validator.FilterFunc) field.ErrorList {
 	hostErrs := field.ErrorList{}
 
 	values := make(map[string]map[interface{}]struct{})
@@ -139,8 +140,7 @@ func validateHosts(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList
 	fldPath = fldPath.Child("hosts")
 
 	for idx, host := range hosts {
-		// Defer BMC validation until provisioning
-		err := validate.StructExcept(host, "BMC")
+		err := validate.StructFiltered(host, filter)
 		if err != nil {
 			hostType := reflect.TypeOf(hosts).Elem().Elem().Name()
 			for _, err := range err.(validator.ValidationErrors) {
@@ -158,55 +158,18 @@ func validateHosts(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList
 	return hostErrs
 }
 
-// validateHostBMC checks that a host's BMC has all required fields set with appropriate values
-func validateHostBMC(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList {
-	bmcErrs := field.ErrorList{}
+func filterHostsBMC(ns []byte) bool {
+	return bytes.Contains(ns, []byte(".BMC"))
+}
 
-	values := make(map[string]map[interface{}]struct{})
+func validateHostsWithoutBMC(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList {
+	return validateHostsBase(hosts, fldPath, filterHostsBMC)
+}
 
-	//Initialize a new validator and register a custom validation rule for the tag `uniqueField`
-	validate := validator.New()
-	validate.RegisterValidation("uniqueField", func(fl validator.FieldLevel) bool {
-		valueFound := false
-		fieldName := fl.Parent().Type().Name() + "." + fl.FieldName()
-		fieldValue := fl.Field().Interface()
-
-		if fl.Field().Type().Comparable() {
-			if _, present := values[fieldName]; !present {
-				values[fieldName] = make(map[interface{}]struct{})
-			}
-
-			fieldValues := values[fieldName]
-			if _, valueFound = fieldValues[fieldValue]; !valueFound {
-				fieldValues[fieldValue] = struct{}{}
-			}
-		} else {
-			panic(fmt.Sprintf("Cannot apply validation rule 'uniqueField' on field %s", fl.FieldName()))
-		}
-
-		return !valueFound
+func validateHostsBMCOnly(hosts []*baremetal.Host, fldPath *field.Path) field.ErrorList {
+	return validateHostsBase(hosts, fldPath, func(ns []byte) bool {
+		return !filterHostsBMC(ns)
 	})
-
-	//Apply validations and translate errors
-	fldPath = fldPath.Child("hosts")
-
-	for idx, host := range hosts {
-		err := validate.Struct(host.BMC)
-
-		if err != nil {
-			for _, err := range err.(validator.ValidationErrors) {
-				childName := fldPath.Index(idx).Child(err.Namespace())
-				switch err.Tag() {
-				case "required":
-					bmcErrs = append(bmcErrs, field.Required(childName, "missing "+err.Field()))
-				case "uniqueField":
-					bmcErrs = append(bmcErrs, field.Duplicate(childName, err.Value()))
-				}
-			}
-		}
-	}
-
-	return bmcErrs
 }
 
 func validateOSImages(p *baremetal.Platform, fldPath *field.Path) field.ErrorList {
@@ -301,7 +264,7 @@ func ValidatePlatform(p *baremetal.Platform, n *types.Networking, fldPath *field
 		allErrs = append(allErrs, field.Required(fldPath.Child("Hosts"), err.Error()))
 	}
 
-	allErrs = append(allErrs, validateHosts(p.Hosts, fldPath)...)
+	allErrs = append(allErrs, validateHostsWithoutBMC(p.Hosts, fldPath)...)
 
 	return allErrs
 }
@@ -368,7 +331,7 @@ func ValidateProvisioning(p *baremetal.Platform, n *types.Networking, fldPath *f
 
 	allErrs = append(allErrs, validateOSImages(p, fldPath)...)
 
-	allErrs = append(allErrs, validateHostBMC(p.Hosts, fldPath)...)
+	allErrs = append(allErrs, validateHostsBMCOnly(p.Hosts, fldPath)...)
 
 	for _, validator := range dynamicProvisioningValidators {
 		allErrs = append(allErrs, validator(p, fldPath)...)
