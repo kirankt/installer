@@ -8,13 +8,18 @@ import (
 	ignutil "github.com/coreos/ignition/v2/config/util"
 	igntypes "github.com/coreos/ignition/v2/config/v3_1/types"
 	"github.com/vincent-petithory/dataurl"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/openshift/installer/pkg/asset/ignition"
 	"github.com/openshift/installer/pkg/types"
 	baremetaltypes "github.com/openshift/installer/pkg/types/baremetal"
 	openstacktypes "github.com/openshift/installer/pkg/types/openstack"
 	ovirttypes "github.com/openshift/installer/pkg/types/ovirt"
 	vspheretypes "github.com/openshift/installer/pkg/types/vsphere"
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
+
+const directory = "openshift"
 
 // pointerIgnitionConfig generates a config which references the remote config
 // served by the machine config server.
@@ -60,4 +65,29 @@ func pointerIgnitionConfig(installConfig *types.InstallConfig, rootCA []byte, ro
 			},
 		},
 	}
+}
+
+// generateMachineConfig generates a machineconfig when a user customizes the ignition file
+// manually.
+func generateMachineConfig(config igntypes.Config, role string) (*mcfgv1.MachineConfig, error) {
+	rawExt, err := ignition.ConvertToRawExtension(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mcfgv1.MachineConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: mcfgv1.SchemeGroupVersion.String(),
+			Kind:       "MachineConfig",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("99-installer-ignition-%s", role),
+			Labels: map[string]string{
+				"machineconfiguration.openshift.io/role": role,
+			},
+		},
+		Spec: mcfgv1.MachineConfigSpec{
+			Config: rawExt,
+		},
+	}, nil
 }
