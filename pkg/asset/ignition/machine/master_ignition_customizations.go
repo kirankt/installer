@@ -2,6 +2,7 @@ package machine
 
 import (
 	"path/filepath"
+	"reflect"
 
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
@@ -45,7 +46,8 @@ func (a *MasterIgnitionCustomizations) Generate(dependencies asset.Parents) erro
 	defaultPointerIgnition := pointerIgnitionConfig(installConfig.Config, rootCA.Cert(), "master")
 	savedPointerIgnition := master.Config
 
-	if savedPointerIgnition != defaultPointerIgnition {
+	sameIgnition := reflect.DeepEqual(savedPointerIgnition, defaultPointerIgnition)
+	if !sameIgnition {
 		logrus.Infof("Master pointer ignition was modified. Saving contents to a machineconfig")
 		mc := &mcfgv1.MachineConfig{}
 		mc, err := generatePointerMachineConfig(*savedPointerIgnition, "master")

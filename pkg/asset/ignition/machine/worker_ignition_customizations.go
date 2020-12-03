@@ -2,6 +2,7 @@ package machine
 
 import (
 	"path/filepath"
+	"reflect"
 
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
@@ -46,7 +47,8 @@ func (a *WorkerIgnitionCustomizations) Generate(dependencies asset.Parents) erro
 	savedPointerIgnition := worker.Config
 
 	// Create a machineconfig if the ignition has been modified
-	if savedPointerIgnition != defaultPointerIgnition {
+	sameIgnition := reflect.DeepEqual(savedPointerIgnition, defaultPointerIgnition)
+	if !sameIgnition {
 		logrus.Infof("Worker pointer ignition was modified. Saving contents to a machineconfig")
 		mc := &mcfgv1.MachineConfig{}
 		mc, err := generatePointerMachineConfig(*savedPointerIgnition, "worker")
